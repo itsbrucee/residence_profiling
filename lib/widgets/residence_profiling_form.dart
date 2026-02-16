@@ -7,6 +7,7 @@ import '../database/database.dart';
 import '../database/tables.dart';
 import '../services/api_service.dart';
 import '../services/connectivity_service.dart';
+import '../services/duplicate_detection_service.dart';
 import '../pages/step_page.dart';
 
 class ResidenceProfilingForm extends StatefulWidget {
@@ -42,6 +43,7 @@ class _ResidenceProfilingFormState extends State<ResidenceProfilingForm> {
   late final AppDatabase _database;
   final ApiService _apiService = ApiService();
   final ConnectivityService _connectivityService = ConnectivityService();
+  final DuplicateDetectionService _duplicateDetectionService = DuplicateDetectionService();
 
   // Step management
   int _currentStep = 0;
@@ -153,6 +155,24 @@ class _ResidenceProfilingFormState extends State<ResidenceProfilingForm> {
 
   Future<void> _saveProfile() async {
     if (widget.profileToEdit != null) {
+      // Check for duplicates (excluding current being edited profile)
+      final duplicateError = await _duplicateDetectionService.checkForDuplicate(
+        firstName: firstName,
+        middleName: middleName,
+        lastName: lastName,
+        nameExtension: nameExtension,
+        birthDate: birthDate!,
+        birthPlace: birthPlace,
+        sex: sex,
+        database: _database,
+        excludeId: widget.profileToEdit!.id,
+      );
+
+      if (duplicateError != null && mounted) {
+        _showErrorSnackBar(duplicateError);
+        return;
+      }
+
       // Update existing profile
       final updatedProfile = ResidenceProfile(
         id: widget.profileToEdit!.id,
@@ -186,6 +206,23 @@ class _ResidenceProfilingFormState extends State<ResidenceProfilingForm> {
         Navigator.of(context).pop();
       }
     } else {
+      // Check for duplicates before inserting new profile
+      final duplicateError = await _duplicateDetectionService.checkForDuplicate(
+        firstName: firstName,
+        middleName: middleName,
+        lastName: lastName,
+        nameExtension: nameExtension,
+        birthDate: birthDate!,
+        birthPlace: birthPlace,
+        sex: sex,
+        database: _database,
+      );
+
+      if (duplicateError != null && mounted) {
+        _showErrorSnackBar(duplicateError);
+        return;
+      }
+
       // Insert new profile
       final profile = ResidenceProfilesCompanion(
         firstName: Value(firstName),
@@ -221,6 +258,24 @@ class _ResidenceProfilingFormState extends State<ResidenceProfilingForm> {
 
   Future<void> _saveDraft() async {
     if (widget.profileToEdit != null) {
+      // Check for duplicates (excluding current being edited profile)
+      final duplicateError = await _duplicateDetectionService.checkForDuplicate(
+        firstName: firstName,
+        middleName: middleName,
+        lastName: lastName,
+        nameExtension: nameExtension,
+        birthDate: birthDate!,
+        birthPlace: birthPlace,
+        sex: sex,
+        database: _database,
+        excludeId: widget.profileToEdit!.id,
+      );
+
+      if (duplicateError != null && mounted) {
+        _showErrorSnackBar(duplicateError);
+        return;
+      }
+
       // Update existing profile as draft
       final updatedProfile = ResidenceProfile(
         id: widget.profileToEdit!.id,
@@ -248,6 +303,23 @@ class _ResidenceProfilingFormState extends State<ResidenceProfilingForm> {
         Navigator.of(context).pop();
       }
     } else {
+      // Check for duplicates before inserting new draft
+      final duplicateError = await _duplicateDetectionService.checkForDuplicate(
+        firstName: firstName,
+        middleName: middleName,
+        lastName: lastName,
+        nameExtension: nameExtension,
+        birthDate: birthDate!,
+        birthPlace: birthPlace,
+        sex: sex,
+        database: _database,
+      );
+
+      if (duplicateError != null && mounted) {
+        _showErrorSnackBar(duplicateError);
+        return;
+      }
+
       // Insert new draft
       final profile = ResidenceProfilesCompanion(
         firstName: Value(firstName),
@@ -295,11 +367,53 @@ class _ResidenceProfilingFormState extends State<ResidenceProfilingForm> {
     );
   }
 
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(message),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        elevation: 6,
+      ),
+    );
+  }
+
   Future<void> _uploadProfiles() async {
     final unsyncedProfiles = await _database.residenceProfileDao.getUnsyncedProfiles();
 
     for (final profile in unsyncedProfiles) {
       try {
+        // Check for duplicates before uploading
+        final duplicateError = await _duplicateDetectionService.checkForDuplicate(
+          firstName: profile.firstName,
+          middleName: profile.middleName ?? '',
+          lastName: profile.lastName,
+          nameExtension: profile.nameExtension ?? '',
+          birthDate: profile.birthDate,
+          birthPlace: profile.birthPlace,
+          sex: profile.sex,
+          database: _database,
+          excludeId: profile.id,
+        );
+
+        if (duplicateError != null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Cannot upload: $duplicateError')),
+            );
+          }
+          continue; // Skip this profile and continue with next
+        }
+
         await _apiService.uploadProfile(profile);
         await _database.residenceProfileDao.deleteProfile(profile.id);
 
