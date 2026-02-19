@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:drift/drift.dart' hide Column;
 import '../database/database.dart';
 import '../database/tables.dart';
@@ -9,6 +8,7 @@ import '../services/api_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/duplicate_detection_service.dart';
 import '../pages/step_page.dart';
+import '../features/location/location.dart';
 
 class ResidenceProfilingForm extends StatefulWidget {
   final ResidenceProfile? profileToEdit;
@@ -434,20 +434,20 @@ class _ResidenceProfilingFormState extends State<ResidenceProfilingForm> {
   }
 
   Future<void> _getCurrentLocation() async {
-    try {
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+    final result = await Navigator.push<({double lat, double lng})>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialLatitude: latitude,
+          initialLongitude: longitude,
+        ),
+      ),
+    );
+    if (result != null && mounted) {
       setState(() {
-        latitude = position.latitude;
-        longitude = position.longitude;
+        latitude = result.lat;
+        longitude = result.lng;
       });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to get location: $e')),
-        );
-      }
     }
   }
 
